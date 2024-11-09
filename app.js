@@ -3,6 +3,9 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const path = require("path");
+const cookieParser = require("cookie-parser");
+require("dotenv").config();
 
 const User = require("./models/customer");
 const Admin = require("./models/admin");
@@ -13,16 +16,14 @@ const trainRoutes = require("./routes/trainRoutes");
 
 const app = express();
 const PORT = 3000;
-const path = require("path");
-const cookieParser = require("cookie-parser");
 
 app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(cors());
-app.set("views", path.join(__dirname, "views"));
 
 // Database connection
 mongoose
@@ -31,55 +32,77 @@ mongoose
   .catch((error) => console.error("MongoDB connection error:", error));
 
 // Routes
-app.use("/api/stations", stationRoutes);
-app.use("/api/trains", trainRoutes);
+app.use("/stations", stationRoutes);
+app.use("/trains", trainRoutes);
 
-app.get("/", (req, res) => {
-  res.render("index");
-});
-app.get("/customer-register", (req, res) => {
-  res.render("customer-register");
-});
-app.get("/customer-login", (req, res) => {
-  res.render("customer-login");
-});
-app.get("/customer-booked-tickets", (req, res) => {
-  res.render("customer-booked-tickets");
-});
-app.get("/customer-booking", (req, res) => {
-  res.render("customer-booking");
-});
-app.get("/customer-cancellation", (req, res) => {
-  res.render("customer-cancellation");
-});
+// Public routes
+app.get("/", (req, res) => res.render("index"));
+app.get("/customer-register", (req, res) => res.render("customer-register"));
+app.get("/customer-login", (req, res) => res.render("customer-login"));
+app.get("/admin-register", (req, res) => res.render("admin-register"));
+app.get("/admin-login", (req, res) => res.render("admin-login"));
+app.get("/invalid-credentials", (req, res) =>
+  res.render("invalid-credentials")
+);
+app.get("/error-page", (req, res) => res.render("error-page"));
+app.get("/customer-search-trains", (req, res) =>
+  res.render("customer-search-trains")
+);
+app.post("/search-results", async (req, res) => {
+  const { startStation, endStation } = req.query;
 
-// Admin Register Page
+  if (!startStation || !endStation) {
+    return res.render("customer-search-trains", {
+      error: "Both start and end stations must be provided.",
+      startStation: startStation || "", // Pass the start station if available
+      endStation: endStation || "", // Pass the end station if available
+    });
+  }
 
-app.get("/admin-register", (req, res) => {
-  res.render("admin-register");
-});
-app.get("/invalid-credentials", (req, res) => {
-  res.render("invalid-credentials");
-});
+  try {
+    // Replace this with your database query logic
+    const trains = await Train.find({
+      startStation: startStation,
+      endStation: endStation,
+    });
 
-// Admin Login Page
-app.get("/admin-login", (req, res) => {
-  res.render("admin-login");
+    // Render the search result page with the trains data
+    res.render("search-results", {
+      startStation,
+      endStation,
+      trains, // Pass trains data to the view
+    });
+  } catch (error) {
+    console.error(error);
+    res.render("customer-search-trains", {
+      error: "An error occurred while searching for trains.",
+      startStation,
+      endStation,
+    });
+  }
 });
-app.get("/admin-manage-seats", (req, res) => {
-  res.render("admin-manage-seats");
-});
-app.get("/admin-manage-trains", (req, res) => {
-  res.render("admin-manage-trains");
-});
-app.get("/admin-manage-stoppage", (req, res) => {
-  res.render("admin-manage-stoppage");
-});
+// Customer-only routes
+app.get("/customer-booked-tickets", isLoggedIn, (req, res) =>
+  res.render("customer-booked-tickets")
+);
+app.get("/customer-booking", isLoggedIn, (req, res) =>
+  res.render("customer-booking")
+);
+app.get("/customer-cancellation", isLoggedIn, (req, res) =>
+  res.render("customer-cancellation")
+);
+app.get("/search-result", (req, res) => res.render("search-result"));
 
-// Train Search Page
-app.get("/customer-search-trains", (req, res) => {
-  res.render("customr-search-trains");
-});
+// Admin-only routes
+app.get("/admin-manage-seats", isLoggedIn, (req, res) =>
+  res.render("admin-manage-seats")
+);
+app.get("/admin-manage-trains", isLoggedIn, (req, res) =>
+  res.render("admin-manage-trains")
+);
+app.get("/admin-manage-stoppage", isLoggedIn, (req, res) =>
+  res.render("admin-manage-stoppage")
+);
 
 // Customer Registration (POST)
 app.post("/customer-register", async (req, res) => {
@@ -88,11 +111,12 @@ app.post("/customer-register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({ name, email, password: hashedPassword });
     await newUser.save();
-    res.redirect("customer-login"); // Redirect to login page after successful registration
+    res.redirect("customer-login");
   } catch (error) {
     res.status(500).json({ message: "Error registering user" });
   }
 });
+
 // Customer Login (POST)
 app.post("/customer-login", async (req, res) => {
   const { email, password } = req.body;
@@ -102,16 +126,13 @@ app.post("/customer-login", async (req, res) => {
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
         expiresIn: "1h",
       });
-      // Set the token in a cookie
       res.cookie("authToken", token, { httpOnly: true, maxAge: 3600000 });
-      res.redirect("customer-booked-tickets"); // Redirect to profile or dashboard after login
+      return res.redirect("customer-booked-tickets", { user });
     } else {
-      res.redirect("invalid-credentials"); // Redirect to profile or dashboard after login
-
-      res.status(401).json({ message: "Invalid credentials" });
+      return res.redirect("invalid-credentials");
     }
   } catch (error) {
-    res.status(500).json({ message: "Error logging in" });
+    return res.redirect("error-page");
   }
 });
 
@@ -119,14 +140,17 @@ app.post("/customer-login", async (req, res) => {
 app.post("/admin-register", async (req, res) => {
   const { name, email, password } = req.body;
   try {
+    const existingAdmin = await Admin.findOne({ email });
+    if (existingAdmin) return res.status(400).send("Admin already registered");
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newAdmin = new Admin({ name, email, password: hashedPassword });
-    await newAdmin.save();
-    res.redirect("admin-login"); // Redirect to admin login after successful registration
+    await Admin.create({ name, email, password: hashedPassword });
+    res.redirect("admin-login");
   } catch (error) {
-    res.status(500).json({ message: "Error registering admin" });
+    return res.redirect("error-page");
   }
 });
+
 // Admin Login (POST)
 app.post("/admin-login", async (req, res) => {
   const { email, password } = req.body;
@@ -136,18 +160,34 @@ app.post("/admin-login", async (req, res) => {
       const token = jwt.sign({ adminId: admin._id }, process.env.JWT_SECRET, {
         expiresIn: "1h",
       });
-      // Set the token in a cookie
       res.cookie("authToken", token, { httpOnly: true, maxAge: 3600000 });
-      res.redirect("admin-manage-trains"); // Redirect to admin profile or dashboard after login
+      return res.redirect("admin-manage-trains");
     } else {
-      res.redirect("invalid-credentials"); // Redirect to profile or dashboard after login
-
-      res.status(401).json({ message: "Invalid credentials" });
+      return res.redirect("invalid-credentials");
     }
   } catch (error) {
-    res.status(500).json({ message: "Error logging in" });
+    return res.redirect("error-page");
   }
 });
+
+// Logout
+app.get("/logout", isLoggedIn, (req, res) => {
+  res.clearCookie("authToken");
+  res.redirect("/");
+});
+
+// Middleware to verify login
+function isLoggedIn(req, res, next) {
+  const token = req.cookies.authToken;
+  if (!token) return res.redirect("/");
+  try {
+    const data = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = data;
+    next();
+  } catch (error) {
+    return res.redirect("/");
+  }
+}
 
 // Book Ticket (POST)
 app.post("/customer-book-ticket", async (req, res) => {
@@ -197,6 +237,98 @@ app.post("/admin-add-train", async (req, res) => {
     res.status(201).json({ message: "Train added successfully" });
   } catch (error) {
     res.status(500).json({ message: "Error adding train" });
+  }
+}); // Route to add a new train
+app.post("/add-trains", async (req, res) => {
+  const { trainNumber, name, startStation, endStation, stoppages } = req.body;
+
+  // Validate incoming data
+  if (!trainNumber || !name || !startStation || !endStation) {
+    return res.status(400).json({ message: "Missing required fields." });
+  }
+
+  try {
+    // Check if the train already exists by trainNumber
+    const existingTrain = await Train.findOne({ trainNumber });
+    if (existingTrain) {
+      return res
+        .status(400)
+        .json({ message: "Train with this number already exists." });
+    }
+
+    // Create new train document
+    const newTrain = new Train({
+      trainNumber,
+      name,
+      startStation,
+      endStation,
+      stoppages, // Optional, you can send this as an array of stoppages if needed
+      dailyRun: dailyRun !== undefined ? dailyRun : true, // Default to true if not provided
+    });
+
+    // Save the new train
+    await newTrain.save();
+
+    return res
+      .status(201)
+      .json({ message: "Train added successfully", newTrain });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error." });
+  }
+});
+
+// Route to remove a train
+app.post("/remove-trains", async (req, res) => {
+  const { trainId } = req.body;
+
+  if (!trainId) {
+    return res.status(400).json({ message: "Train ID is required." });
+  }
+
+  try {
+    // Find and remove the train by trainId
+    const train = await Train.findByIdAndDelete(trainId);
+
+    if (!train) {
+      return res.status(404).json({ message: "Train not found." });
+    }
+
+    return res.status(200).json({ message: "Train removed successfully." });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error." });
+  }
+});
+
+app.post("/update-seats", async (req, res) => {
+  const { trainId, seatsToAdd } = req.body; // Expecting 'trainId' and 'seatsToAdd' in the request body
+
+  if (!trainId || typeof seatsToAdd !== "number") {
+    return res.status(400).json({ message: "Invalid input" });
+  }
+
+  try {
+    // Find the train by ID and update its available seats
+    const train = await Train.findById(trainId);
+
+    if (!train) {
+      return res.status(404).json({ message: "Train not found" });
+    }
+
+    // Update the available seats by adding the specified amount
+    train.seatsAvailable += seatsToAdd;
+
+    // Save the updated train document
+    await train.save();
+
+    return res.status(200).json({
+      message: `Seats updated successfully. Available seats: ${train.seatsAvailable}`,
+      train,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

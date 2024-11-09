@@ -6,7 +6,7 @@
   </head>
   <body>
     <h2>Add Train</h2>
-    <form id="addTrainForm">
+    <form id="addTrainForm" action="/add-trains" method="post">
       <input type="text" id="trainNumber" placeholder="Train Number" required />
       <input type="text" id="name" placeholder="Train Name" required />
       <input
@@ -31,7 +31,7 @@
     </form>
 
     <h2>Remove Train</h2>
-    <form id="removeTrainForm">
+    <form id="removeTrainForm"action="/remove-trains" method="post">
       <input type="text" id="trainId" placeholder="Train ID" required />
       <button type="submit">Remove Train</button>
     </form>

@@ -31,7 +31,7 @@ const trainSchema = new mongoose.Schema({
   ],
   seatsAvailable: {
     type: Number,
-    required: true,
+    default: 100,
   },
   dailyRun: {
     type: Boolean,
