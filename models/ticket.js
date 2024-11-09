@@ -9,6 +9,10 @@ const TicketSchema = new mongoose.Schema({
       age: Number,
     },
   ],
+  seats: {
+    type: Number,
+    required: true,
+  },
   date: { type: Date, required: true },
   status: { type: String, enum: ["booked", "cancelled"], default: "booked" },
 });

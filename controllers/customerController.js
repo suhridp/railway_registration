@@ -1,130 +1,89 @@
 const User = require("../models/customer");
-const Train = require("../models/train");
-const Ticket = require("../models/ticket");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const Train = require("../models/train");
 
-// Utility function for consistent response handling
-const handleResponse = (res, status, message, data = null) => {
-  const response = { message };
-  if (data) response.data = data;
-  return res.status(status).json(response);
-};
-
-// Customer Registration
-exports.register = async (req, res) => {
+exports.registerUser = async (req, res) => {
   const { name, email, password } = req.body;
   try {
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return handleResponse(res, 400, "User already exists with this email");
+      return res.status(400).json({ message: "User already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ name, email, password: hashedPassword });
+    const newUser = new User({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
     await newUser.save();
-    handleResponse(res, 201, "User registered successfully");
+    res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error registering user");
+    res.status(500).json({ message: "Error registering user", error });
   }
 };
 
-// Customer Login
-exports.login = async (req, res) => {
+exports.loginUser = async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      return handleResponse(res, 401, "Invalid credentials");
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return handleResponse(res, 401, "Invalid credentials");
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(400).json({ message: "Invalid credentials" });
     }
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
 
-    handleResponse(res, 200, "Login successful", { token });
+    res.cookie("authToken", token, { httpOnly: true, maxAge: 3600000 });
+    res.status(200).json({ message: "User logged in successfully", token });
   } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error logging in");
+    res.status(500).json({ message: "Error logging in user", error });
   }
 };
 
-// Search Trains
+exports.logoutUser = (req, res) => {
+  res.clearCookie("authToken");
+  res.status(200).json({ message: "User logged out successfully" });
+};
+
+exports.getUserProfile = async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching user profile", error });
+  }
+};
+
 exports.searchTrains = async (req, res) => {
-  const { startStation, endStation, date } = req.body;
+  const { startStation, endStation } = req.query;
   try {
-    const trains = await Train.find({
-      "schedule.station": { $all: [startStation, endStation] },
-    });
-
-    if (!trains.length) {
-      return handleResponse(res, 404, "No trains found for the given route");
+    if (!startStation || !endStation) {
+      return res
+        .status(400)
+        .json({ message: "Start and end stations are required" });
     }
 
-    handleResponse(res, 200, "Trains fetched successfully", trains);
-  } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error fetching trains");
-  }
-};
-
-// Book Ticket
-exports.bookTicket = async (req, res) => {
-  const { userId, trainId, date, passengers } = req.body;
-  try {
-    const ticket = new Ticket({
-      user: userId,
-      train: trainId,
-      date,
-      passengers,
-    });
-
-    await ticket.save();
-    handleResponse(res, 201, "Ticket booked successfully", ticket);
-  } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error booking ticket");
-  }
-};
-
-// View Ticket
-exports.viewTicket = async (req, res) => {
-  try {
-    const ticket = await Ticket.findById(req.params.id)
-      .populate("train")
-      .populate("user");
-
-    if (!ticket) {
-      return handleResponse(res, 404, "Ticket not found");
+    const trains = await Train.find({ startStation, endStation });
+    if (trains.length === 0) {
+      return res.status(404).json({ message: "No trains found" });
     }
 
-    handleResponse(res, 200, "Ticket retrieved successfully", ticket);
+    res.status(200).json({ trains });
   } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error retrieving ticket");
-  }
-};
-
-// Cancel Ticket
-exports.cancelTicket = async (req, res) => {
-  try {
-    const ticket = await Ticket.findById(req.params.id);
-    if (!ticket) {
-      return handleResponse(res, 404, "Ticket not found");
-    }
-
-    ticket.status = "cancelled";
-    await ticket.save();
-    handleResponse(res, 200, "Ticket cancelled successfully");
-  } catch (error) {
-    console.error(error);
-    handleResponse(res, 500, "Error cancelling ticket");
+    res.status(500).json({ message: "Error searching for trains", error });
   }
 };

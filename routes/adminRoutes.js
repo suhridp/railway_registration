@@ -1,24 +1,17 @@
 const express = require("express");
 const router = express.Router();
-const {
-  register,
-  login,
-  addTrain,
-  removeTrain,
-  manageStoppages,
-  updateSeatAvailability,
-} = require("../controllers/adminController");
+const adminController = require("../controllers/adminController");
 
-// Admin registration and login
-router.post("/register", register);
-router.post("/login", login);
+// Admin registration
+router.post("/admin-register", adminController.registerAdmin);
 
-// Train management
-router.post("/add-train", addTrain);
-router.delete("/remove-train/:id", removeTrain);
+// Admin login
+router.post("/admin-login", adminController.loginAdmin);
 
-// Manage stoppage stations and seats
-router.put("/manage-stoppages/:trainId", manageStoppages);
-router.put("/update-seat-availability/:trainId", updateSeatAvailability);
+// Add a train (Admin only)
+router.post("/admin-manage-train", adminController.addTrain);
+
+// Manage seats for a train
+router.put("/admin-manage-seats/:trainId", adminController.manageSeats);
 
 module.exports = router;

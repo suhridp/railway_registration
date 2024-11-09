@@ -1,24 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const {
-  register,
-  login,
-  searchTrains,
-  bookTicket,
-  viewTicket,
-  cancelTicket,
-} = require("../controllers/customerController");
+const userController = require("../controllers/customerController");
 
-// Customer registration and login
-router.post("/register", register);
-router.post("/login", login);
+// User registration
+router.post("/customer-register", userController.registerUser);
 
-// Search trains and book tickets
-router.post("/search-trains", searchTrains);
-router.post("/book-ticket", bookTicket);
+// User login
+router.post("/customer-login", userController.loginUser);
 
-// View and cancel ticket
-router.get("/view-ticket/:id", viewTicket);
-router.post("/cancel-ticket/:id", cancelTicket);
+// User logout
+router.post("/logout", userController.logoutUser);
+
+// Get user profile
+router.get("/customer-profile/:userId", userController.getUserProfile);
+
+// Search trains
+router.get("/customer-search-trains", userController.searchTrains);
 
 module.exports = router;
